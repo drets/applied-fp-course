@@ -37,11 +37,16 @@ main = do
           get "/list" `shouldRespondWith` "List Request not implemented"
 
       -- Write some more tests, below are some ideas to get you started:
-
       -- Don't worry if you don't get all of these done. :)
 
-      -- 1) The '<topic>/add' route will respond with an error when given an empty comment
-      -- 2) The '<topic>/view' route will respond correctly when given a topic
-      -- 3) The '<topic>/view' route will respond with an error when given an empty topic
-      -- 4) A gibberish route will return a 404
+        it "The '<topic>/add' route will respond with an error when given an empty comment" $
+          post "/blah/add" "" `shouldRespondWith` "Empty Comment" {matchStatus = 400}
+          
+        it "The '<topic>/view' route will respond correctly when given a topic" $
+          get "/blah/view" `shouldRespondWith` "View Request not implemented"
+          
+        it "The '<topic>/view' route will respond with an error when given an empty topic" $
+          get "//view" `shouldRespondWith` "Empty Topic" {matchStatus = 400}
 
+        it "A gibberish route will return a 404" $
+          get "/blah" `shouldRespondWith` "Unknown Route" {matchStatus = 404}
