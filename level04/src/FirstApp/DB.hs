@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-unused-matches #-}
 module FirstApp.DB
   ( FirstAppDB (FirstAppDB)
@@ -15,14 +16,14 @@ import qualified Data.Text                          as Text
 
 import           Data.Time                          (getCurrentTime)
 
-import           Database.SQLite.Simple             (Connection, Query (Query))
+import           Database.SQLite.Simple             (Connection, Query (Query), NamedParam((:=)))
 import qualified Database.SQLite.Simple             as Sql
 
 import qualified Database.SQLite.SimpleErrors       as Sql
 import           Database.SQLite.SimpleErrors.Types (SQLiteResponse)
 
 import           FirstApp.Types                     (Comment, CommentText,
-                                                     Error, Topic)
+                                                     Error, Topic, getTopic, mkTopic, fromDbComment, getCommentText)
 
 -- ------------------------------------------------------------------------|
 -- You'll need the documentation for sqlite-simple ready for this section! |
@@ -40,20 +41,17 @@ data FirstAppDB = FirstAppDB
   }
 
 -- Quick helper to pull the connection and close it down.
-closeDB
-  :: FirstAppDB
-  -> IO ()
-closeDB =
-  error "closeDb not implemented"
+closeDB :: FirstAppDB -> IO ()
+closeDB FirstAppDB{..} = Sql.close dbConn
 
 -- Given a `FilePath` to our SQLite DB file, initialise the database and ensure
 -- our Table is there by running a query to create it, if it doesn't exist
 -- already.
-initDB
-  :: FilePath
-  -> IO ( Either SQLiteResponse FirstAppDB )
-initDB fp =
-  error "initDb not implemented"
+initDB :: FilePath -> IO ( Either SQLiteResponse FirstAppDB )
+initDB fp = do
+  dbConn <- Sql.open fp
+  Sql.execute_ dbConn createTableQ
+  pure $ Right FirstAppDB{..}
   where
   -- Query has an `IsString` instance so string literals like this can be
   -- converted into a `Query` type when the `OverloadedStrings` language
@@ -70,11 +68,8 @@ initDB fp =
 --
 -- HINT: You can use '?' or named place-holders as query parameters. Have a look
 -- at the section on parameter substitution in sqlite-simple's documentation.
-getComments
-  :: FirstAppDB
-  -> Topic
-  -> IO (Either Error [Comment])
-getComments =
+getComments :: FirstAppDB -> Topic -> IO (Either Error [Comment])
+getComments FirstAppDB{..} topic =
   let
     sql = "SELECT id,topic,comment,time FROM comments WHERE topic = ?"
   -- There are several possible implementations of this function. Particularly
@@ -82,35 +77,25 @@ getComments =
   -- cannot be converted to a Comment, or simply ignoring any DbComment that is
   -- not valid.
   in
-    error "getComments not implemented"
+    Sql.query dbConn sql (Sql.Only (getTopic topic)) >>= (pure . traverse fromDbComment)
 
-addCommentToTopic
-  :: FirstAppDB
-  -> Topic
-  -> CommentText
-  -> IO (Either Error ())
-addCommentToTopic =
-  let
-    sql = "INSERT INTO comments (topic,comment,time) VALUES (?,?,?)"
-  in
-    error "addCommentToTopic not implemented"
+addCommentToTopic :: FirstAppDB -> Topic -> CommentText -> IO (Either Error ())
+addCommentToTopic FirstAppDB{..} topic comment = do
+  let sql = "INSERT INTO comments (topic,comment,time) VALUES (?,?,?)"
+  time <- getCurrentTime
+  xs <- Sql.execute dbConn sql (getTopic topic, getCommentText comment, time)
+  pure $ Right xs
 
-
-getTopics
-  :: FirstAppDB
-  -> IO (Either Error [Topic])
-getTopics =
+getTopics :: FirstAppDB -> IO (Either Error [Topic])
+getTopics FirstAppDB{..} =
   let
     sql = "SELECT DISTINCT topic FROM comments"
   in
-    error "getTopics not implemented"
+    Sql.query_ dbConn sql >>= (pure . traverse (mkTopic . Sql.fromOnly))
 
-deleteTopic
-  :: FirstAppDB
-  -> Topic
-  -> IO (Either Error ())
-deleteTopic =
+deleteTopic :: FirstAppDB -> Topic -> IO (Either Error ())
+deleteTopic FirstAppDB{..} topic =
   let
     sql = "DELETE FROM comments WHERE topic = ?"
   in
-    error "deleteTopic not implemented"
+    Sql.execute dbConn sql (Sql.Only (getTopic topic)) >>= (pure . Right)

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module FirstApp.Main
   ( runApp
   , prepareAppReqs
@@ -32,7 +33,7 @@ import qualified Data.Aeson                         as A
 
 import           Database.SQLite.SimpleErrors.Types (SQLiteResponse)
 
-import           FirstApp.Conf                      (Conf, firstAppConfig)
+import           FirstApp.Conf                      (Conf(..), firstAppConfig)
 import qualified FirstApp.DB                        as DB
 import           FirstApp.Types                     (ContentType (JSON, PlainText),
                                                      Error (EmptyCommentText, EmptyTopic, UnknownRoute),
@@ -48,7 +49,11 @@ data StartUpError
   deriving Show
 
 runApp :: IO ()
-runApp = error "runApp needs re-implementing"
+runApp = do
+  prep <- prepareAppReqs
+  case prep of
+    Left e -> print e
+    Right d -> run 3000 (app d)
 
 -- We need to complete the following steps to prepare our app requirements:
 --
@@ -58,10 +63,13 @@ runApp = error "runApp needs re-implementing"
 --
 -- Our application configuration is defined in Conf.hs
 --
-prepareAppReqs
-  :: IO ( Either StartUpError DB.FirstAppDB )
-prepareAppReqs =
-  error "prepareAppReqs not implemented"
+prepareAppReqs :: IO ( Either StartUpError DB.FirstAppDB )
+prepareAppReqs = do
+  let filePath = dbFilePath firstAppConfig
+  db <- DB.initDB filePath
+  case db of
+    (Left e) -> (pure . Left) $ DbInitErr e
+    (Right r) -> (pure . Right) $ r
 
 -- | Some helper functions to make our lives a little more DRY.
 mkResponse
@@ -109,8 +117,7 @@ resp200Json =
   mkResponse status200 JSON . A.encode
 
 -- |
-app
-  :: DB.FirstAppDB -- ^ Add the Database record to our app so we can use it
+app :: DB.FirstAppDB -- ^ Add the Database record to our app so we can use it
   -> Application
 app db rq cb = do
   rq' <- mkRequest rq
@@ -129,12 +136,14 @@ handleRequest
   :: DB.FirstAppDB
   -> RqType
   -> IO (Either Error Response)
-handleRequest _db (AddRq _ _) =
-  (resp200 PlainText "Success" <$) <$> error "AddRq handler not implemented"
-handleRequest _db (ViewRq _)  =
-  error "ViewRq handler not implemented"
-handleRequest _db ListRq      =
-  error "ListRq handler not implemented"
+handleRequest _db (AddRq t c) =
+  (resp200 PlainText "Success" <$) <$> DB.addCommentToTopic _db t c
+handleRequest _db (ViewRq t)  = do
+  comments <- DB.getComments _db t
+  pure $ either Left (Right . resp200Json) comments
+handleRequest _db ListRq      = do
+  topics <- DB.getTopics _db
+  pure $ either Left (Right . resp200Json) topics
 
 mkRequest
   :: Request

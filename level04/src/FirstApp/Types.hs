@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 module FirstApp.Types
   ( Error (..)
   , RqType (..)
@@ -30,7 +31,7 @@ import qualified Data.Aeson.Types           as A
 
 import           Data.Time                  (UTCTime)
 
-import           FirstApp.DB.Types          (DBComment)
+import           FirstApp.DB.Types          (DBComment(..))
 import           FirstApp.Types.CommentText (CommentText, mkCommentText
                                             , getCommentText)
 import           FirstApp.Types.Error       (Error( UnknownRoute
@@ -68,11 +69,8 @@ data Comment = Comment
 -- "topic"
 -- >>> modFieldLabel ""
 -- ""
-modFieldLabel
-  :: String
-  -> String
-modFieldLabel =
-  error "modFieldLabel not implemented"
+modFieldLabel :: String -> String
+modFieldLabel s = fromMaybe s (stripPrefix "comment" s)
 
 instance ToJSON Comment where
   -- This is one place where we can take advantage of our `Generic` instance.
@@ -94,11 +92,12 @@ instance ToJSON Comment where
 -- that we would be okay with showing someone. However unlikely it may be, this
 -- is a nice method for separating out the back and front end of a web app and
 -- providing greater guarantees about data cleanliness.
-fromDbComment
-  :: DBComment
-  -> Either Error Comment
-fromDbComment =
-  error "fromDbComment not yet implemented"
+fromDbComment :: DBComment -> Either Error Comment
+fromDbComment DBComment{..} =
+  Comment <$> pure (CommentId _commentId)
+          <*> (mkTopic _commentTopic)
+          <*> (mkCommentText _commentBody)
+          <*> pure _commentTime
 
 data RqType
   = AddRq Topic CommentText
