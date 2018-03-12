@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module FirstApp.Types
@@ -37,8 +38,9 @@ import           Data.Monoid                        (Last,
 import           Data.List                          (stripPrefix)
 import           Data.Maybe                         (fromMaybe)
 import           Data.Time                          (UTCTime)
+import           Control.Exception
 
-import           Data.Aeson                         (FromJSON (..), ToJSON)
+import           Data.Aeson                         (FromJSON (..), ToJSON, (.:))
 import qualified Data.Aeson                         as A
 import qualified Data.Aeson.Types                   as A
 
@@ -163,8 +165,11 @@ newtype DBFilePath = DBFilePath
 -- - A customisable port number: ``Port``
 -- - A filepath for our SQLite database: ``DBFilePath``
 data Conf = Conf
+   { portNumber :: Port
+   , filePath   :: FilePath
+   }
 
--- We're storing our Port as a Word16 to be more precise and prevent invalid
+-- We're storing our Port as a Word16 to be more precise agetPortnd prevent invalid
 -- values from being used in our application. However Wai is not so stringent.
 -- To accommodate this and make our lives a bit easier, we will write this
 -- helper function to take ``Conf`` value and convert it to an ``Int``.
@@ -174,16 +179,16 @@ data Conf = Conf
 --
 -- fromIntegral :: (Num b, Integral a) => a -> b
 --
-confPortToWai
-  :: Conf
-  -> Int
-confPortToWai =
-  error "confPortToWai not implemented"
+confPortToWai :: Conf -> Int
+confPortToWai Conf{..} = fromIntegral . getPort $ portNumber
 
 -- Similar to when we were considering our application types, leave this empty
 -- for now and add to it as you go.
-data ConfigError = ConfigError
-  deriving Show
+data ConfigError = NoSuchFile IOError
+                 | InvalidPartialConfig
+                 | NoPort
+                 | NoDbFilePath
+                 deriving Show
 
 -- Our application will be able to load configuration from both a file and
 -- command line input. We want to be able to use the command line to temporarily
@@ -222,8 +227,8 @@ instance Monoid PartialConf where
   mempty = PartialConf mempty mempty
 
   mappend _a _b = PartialConf
-    { pcPort       = error "pcPort mappend not implemented"
-    , pcDBFilePath = error "pcDBFilePath mappend not implemented"
+    { pcPort       = mappend (pcPort _a) (pcPort _b)
+    , pcDBFilePath = mappend (pcDBFilePath _a) (pcDBFilePath _b)
     }
 
 -- When it comes to reading the configuration options from the command-line, we
@@ -235,5 +240,16 @@ instance Monoid PartialConf where
 -- library to handle the parsing and decoding for us. In order to do this, we
 -- have to tell aeson how to go about converting the JSON into our PartialConf
 -- data structure.
+instance FromJSON Port where
+  parseJSON = A.withObject "port" $ \o -> do
+    Port <$> o .: "port"
+
+instance FromJSON DBFilePath where
+  parseJSON = A.withObject "dbFilePath" $ \o -> do
+    DBFilePath <$> o .: "dbFileName"
+
 instance FromJSON PartialConf where
-  parseJSON = error "parseJSON for PartialConf not implemented yet."
+  parseJSON = A.withObject "partialConfig" $ \o -> do
+    pcPort       <- parseJSON (A.Object o)
+    pcDBFilePath <- parseJSON (A.Object o)
+    return PartialConf{..}

@@ -49,8 +49,7 @@ portParser =
     Last <$> optional (option portReader mods)
 
 -- Parse the DBFilePath from the input string into our type and into a Last wrapper.
-dbFilePathParser
-  :: Parser (Last DBFilePath)
+dbFilePathParser :: Parser (Last DBFilePath)
 dbFilePathParser =
   let
     mods = long "db-filepath"

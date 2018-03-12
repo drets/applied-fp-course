@@ -31,10 +31,10 @@ import qualified Data.Aeson                         as A
 
 import qualified FirstApp.Conf                      as Conf
 import qualified FirstApp.DB                        as DB
-import           FirstApp.Types                     (Conf, ContentType (..),
-                                                     Error (..),
+import           FirstApp.Types                     (Conf(..), ContentType (..),
+                                                     Error (..), Port(..),
                                                      RqType (AddRq, ListRq, ViewRq),
-                                                     mkCommentText, mkTopic,
+                                                     mkCommentText, mkTopic, ConfigError,
                                                      renderContentType)
 
 -- Our start-up is becoming more complicated and could fail in new and
@@ -42,6 +42,7 @@ import           FirstApp.Types                     (Conf, ContentType (..),
 -- single type so that we can deal with the entire start-up process as a whole.
 data StartUpError
   = DbInitErr SQLiteResponse
+  | ParseOptionsErr ConfigError
   deriving Show
 
 runApp :: IO ()
@@ -50,8 +51,13 @@ runApp = do
   cfgE <- prepareAppReqs
   -- Loading the configuration can fail, so we have to take that into account now.
   case cfgE of
-    Left err   -> undefined
-    Right _cfg -> run undefined undefined
+    Left err     -> print err
+    Right (c, d) -> run port (app c d)
+       where
+         port = fromIntegral . getPort . portNumber $ c
+
+
+-- parseOptions :: FilePath -> IO (Either ConfigError Conf)
 
 -- We need to complete the following steps to prepare our app requirements:
 --
@@ -61,10 +67,16 @@ runApp = do
 --
 -- The filename for our application config is: "appconfig.json"
 --
-prepareAppReqs
-  :: IO ( Either StartUpError ( Conf, DB.FirstAppDB ) )
-prepareAppReqs =
-  error "copy your prepareAppReqs from the previous level."
+prepareAppReqs :: IO ( Either StartUpError ( Conf, DB.FirstAppDB ) )
+prepareAppReqs = do
+  c <- Conf.parseOptions "appconfig.json"
+  case c of
+    (Left e) -> pure $ Left (ParseOptionsErr e)
+    (Right conf) -> do
+       db <- DB.initDB (filePath conf)
+       case db of
+         (Left e) -> (pure . Left) $ DbInitErr e
+         (Right r) -> (pure . Right) $ (conf, r)
 
 -- | Some helper functions to make our lives a little more DRY.
 mkResponse

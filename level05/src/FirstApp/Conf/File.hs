@@ -15,7 +15,7 @@ import           Data.Aeson                 (FromJSON, Object)
 
 import qualified Data.Aeson                 as Aeson
 
-import           FirstApp.Types             (ConfigError,
+import           FirstApp.Types             (ConfigError(NoSuchFile, InvalidPartialConfig),
                                              PartialConf (PartialConf))
 -- Doctest setup section
 -- $setup
@@ -33,20 +33,25 @@ import           FirstApp.Types             (ConfigError,
 --
 -- | readConfFile
 -- >>> readConfFile "badFileName.no"
--- Left (undefined "badFileName.no: openBinaryFile: does not exist (No such file or directory)")
+-- Left (NoSuchFile badFileName.no: openBinaryFile: does not exist (No such file or directory))
 -- >>> readConfFile "test.json"
 -- Right "{\n  \"foo\": 33\n}\n"
 --
-readConfFile
-  :: FilePath
-  -> IO ( Either ConfigError ByteString )
-readConfFile =
-  error "readConfFile not implemented"
+readConfFile :: FilePath -> IO ( Either ConfigError ByteString )
+readConfFile filePath = do
+  r <- try (LBS.readFile filePath)
+  case (r :: Either IOError ByteString) of
+    Left e -> pure $ Left (NoSuchFile e)
+    Right bytestring -> pure $ Right bytestring
 
 -- Construct the function that will take a ``FilePath``, read it in, decode it,
 -- and construct our ``PartialConf``.
-parseJSONConfigFile
-  :: FilePath
-  -> IO ( Either ConfigError PartialConf )
-parseJSONConfigFile =
-  error "parseJSONConfigFile not implemented"
+parseJSONConfigFile :: FilePath -> IO ( Either ConfigError PartialConf )
+parseJSONConfigFile filePath = do
+  b <- readConfFile filePath
+  case b of
+    Left e -> pure $ Left e
+    Right r -> do
+      case Aeson.decode r of
+        Nothing -> pure $ Left InvalidPartialConfig
+        Just p  -> pure $ Right p
