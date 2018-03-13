@@ -10,7 +10,7 @@ module FirstApp.DB
   ) where
 
 import           Control.Monad.IO.Class             (liftIO)
-import           Control.Monad.Reader               (asks)
+import           Control.Monad.Reader               (ask, asks)
 
 import           Data.Bifunctor                     (first)
 import           Data.Text                          (Text)
@@ -36,15 +36,10 @@ import           FirstApp.Types                     (Comment, CommentText,
                                                      mkTopic)
 
 -- Quick helper to pull the connection and close it down.
-closeDB
-  :: FirstAppDB
-  -> IO ()
-closeDB =
-  Sql.close . dbConn
+closeDB :: FirstAppDB -> IO ()
+closeDB = Sql.close . dbConn
 
-initDB
-  :: DBFilePath
-  -> IO ( Either SQLiteResponse FirstAppDB )
+initDB :: DBFilePath -> IO ( Either SQLiteResponse FirstAppDB )
 initDB fp = Sql.runDBAction $ do
   -- Initialise the connection to the DB...
   -- - What could go wrong here?
@@ -60,38 +55,43 @@ initDB fp = Sql.runDBAction $ do
     createTableQ =
       "CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY, topic TEXT, comment TEXT, time INTEGER)"
 
-getDBConn
-  :: AppM Connection
-getDBConn =
-  error "getDBConn not implemented"
+getDBConn :: AppM Connection
+getDBConn = do
+  env <- ask
+  pure $ dbConn (envDB env)
 
-runDB
-  :: (a -> Either Error b)
-  -> (Connection -> IO a)
-  -> AppM (Either Error b)
-runDB =
-  error "runDB not re-implemented"
+runDB :: (a -> Either Error b) -> (Connection -> IO a) -> AppM (Either Error b)
+runDB f c = do
+  conn <- getDBConn
+  r <- liftIO $ Sql.runDBAction $ c conn
+  return $ either (Left . DBError) f r
 
 getComments
   :: Topic
   -> AppM (Either Error [Comment])
-getComments =
-  error "Copy your completed 'getComments' and refactor to match the new type signature"
+getComments t = do
+   let q = "SELECT id,topic,comment,time FROM comments WHERE topic = ?"
+   runDB (traverse fromDbComment) $ \conn -> Sql.query conn q (Sql.Only . getTopic $ t)
 
 addCommentToTopic
   :: Topic
   -> CommentText
   -> AppM (Either Error ())
-addCommentToTopic =
-  error "Copy your completed 'appCommentToTopic' and refactor to match the new type signature"
+addCommentToTopic t c = do
+  nowish <- liftIO $ getCurrentTime
+  let q = "INSERT INTO comments (topic,comment,time) VALUES (?,?,?)"
+  runDB Right $ \conn -> Sql.execute conn q (getTopic t, getCommentText c, nowish)
 
-getTopics
-  :: AppM (Either Error [Topic])
+getTopics :: AppM (Either Error [Topic])
 getTopics =
-  error "Copy your completed 'getTopics' and refactor to match the new type signature"
+  let q = "SELECT DISTINCT topic FROM comments"
+  in
+    runDB (traverse ( mkTopic . Sql.fromOnly )) $ \conn -> Sql.query_ conn q
 
 deleteTopic
   :: Topic
   -> AppM (Either Error ())
-deleteTopic =
-  error "Copy your completed 'deleteTopic' and refactor to match the new type signature"
+deleteTopic t =
+  let q = "DELETE FROM comments WHERE topic = ?"
+  in
+    runDB Right $ \conn -> Sql.execute conn q (Sql.Only . getTopic $ t)

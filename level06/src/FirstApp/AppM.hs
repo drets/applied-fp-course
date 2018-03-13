@@ -49,49 +49,50 @@ newtype AppM a = AppM ( Env -> IO a )
 -- AppM e m a = AppM ( e -> m a )
 --
 
-runAppM
-  :: AppM a
-  -> Env
-  -> IO a
-runAppM =
-  error "runAppM not implemented"
+runAppM :: AppM a -> Env -> IO a
+runAppM (AppM h) env = h env
+
+-- h :: Env -> IO a
+-- f :: a -> b
 
 instance Functor AppM where
   fmap :: (a -> b) -> AppM a -> AppM b
-  fmap = error "fmap for AppM not implemented"
+  fmap f (AppM h) = AppM $ \env -> f <$> h env
 
 instance Applicative AppM where
   pure :: a -> AppM a
-  pure = error "pure for AppM not implemented"
+  pure a = AppM $ \_ -> pure a
 
   (<*>) :: AppM (a -> b) -> AppM a -> AppM b
-  (<*>) = error "spaceship for AppM not implemented"
+  (<*>) (AppM f) (AppM h) = AppM $ \env -> f env <*> h env
 
 instance Monad AppM where
   return :: a -> AppM a
-  return = error "return for AppM not implemented"
+  return a = AppM $ \_ -> pure a
 
+  -- f :: Env -> IO a
+  -- h :: a -> AppM b
+  -- Env -> IO b
+  -- IO b
   -- When it comes to running functions in AppM as a Monad, this will take care
   -- of passing the Env from one function to the next.
   (>>=) :: AppM a -> (a -> AppM b) -> AppM b
-  (>>=) = error "bind for AppM not implemented"
+  (>>=) (AppM f) h = AppM $ \env -> f env >>= \a -> let (AppM c) = (h a) in c env
 
 instance MonadReader Env AppM where
   -- Return the current Env from the AppM.
   ask :: AppM Env
-  ask = error "ask for AppM not implemented"
+  ask = AppM pure
 
   -- Run a AppM inside of the current one using a modified Env value.
   local :: (Env -> Env) -> AppM a -> AppM a
-  local = error "local for AppM not implemented"
+  local f (AppM h) = AppM $ \env -> h (f env)
 
-  -- This will run a function on the current Env and return the result.
   reader :: (Env -> a) -> AppM a
-  reader = error "reader for AppM not implemented"
+  reader f = AppM $ \env -> pure $ f env
 
 instance MonadIO AppM where
-  -- Take a type of 'IO a' and lift it into our AppM.
   liftIO :: IO a -> AppM a
-  liftIO = error "liftIO for AppM not implemented"
+  liftIO io = AppM $ const io
 
 -- Move on to ``src/FirstApp/DB.hs`` after this

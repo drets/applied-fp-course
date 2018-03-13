@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module FirstApp.Main
   ( runApp
   , prepareAppReqs
@@ -44,7 +45,7 @@ import           FirstApp.Types                     (Conf (dbFilePath),
                                                      confPortToWai,
                                                      mkCommentText, mkTopic)
 
-import           FirstApp.AppM                      (AppM, Env (Env, envConfig, envDB, envLoggingFn))
+import           FirstApp.AppM                      (AppM, Env (Env, envConfig, envDB, envLoggingFn), runAppM)
 
 -- Our start-up is becoming more complicated and could fail in new and
 -- interesting ways. But we also want to be able to capture these errors in a
@@ -102,11 +103,39 @@ prepareAppReqs = do
 -- within our AppM context, we need to run the AppM to get our IO action out
 -- to be run and handed off to the callback function. We've already written
 -- the function for this so include the 'runAppM' with the Env.
-app
-  :: Env
-  -> Application
-app =
-  error "Copy your completed 'app' from the previous level and refactor it here"
+-- data Env = Env
+--   { envLoggingFn :: Text -> AppM ()
+--   , envConfig    :: Conf
+--   , envDB        :: FirstAppDB
+--   }
+app :: Env -> Application
+app env rq cb = do
+  rq' <- runAppM (mkRequest rq) env
+  resp <- runA $ handleRErr rq'
+  resp' <- runA $ handleRespErr resp
+  cb resp'
+  where
+    handleRespErr :: Either Error Response -> AppM Response
+    handleRespErr = either mkErrorResponse pure
+
+    handleRErr :: Either Error RqType -> AppM (Either Error Response)
+    handleRErr = either ( pure . Left ) handleRequest
+
+    runA :: AppM a -> IO a
+    runA o = runAppM o env
+
+
+
+  -- resp <- handleRespErr <$> handleRErr rq'
+  -- cb resp
+  -- where
+  --   handleRespErr :: Either Error Response -> Response
+  --   handleRespErr = either mkErrorResponse id
+
+  --   -- We want to pass the Database through to the handleRequest so it's
+  --   -- available to all of our handlers.
+  --   handleRErr :: Either Error RqType -> IO (Either Error Response)
+  --   handleRErr = either ( pure . Left ) ( handleRequest rq )
 
 handleRequest
   :: RqType
