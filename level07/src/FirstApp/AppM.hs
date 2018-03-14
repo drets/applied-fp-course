@@ -14,7 +14,7 @@ import           FirstApp.DB.Types      (FirstAppDB)
 import           FirstApp.Types         (Conf, Error)
 
 import           Data.Bifunctor         (first)
-
+import           Control.Applicative    (liftA2)
 data Env = Env
   { envLoggingFn :: Text -> AppM ()
   , envConfig    :: Conf
@@ -70,38 +70,47 @@ runAppM (AppM m) =
 
 instance Applicative AppM where
   pure :: a -> AppM a
-  pure  = error "pure for AppM not implemented"
+  pure a = AppM $ const . pure . pure $ a
 
   (<*>) :: AppM (a -> b) -> AppM a -> AppM b
-  (<*>) = error "ap for AppM not implemented"
+  (<*>) f h = AppM $ \env -> liftA2 (<*>) (runAppM f env) (runAppM h env)
 
 instance Monad AppM where
   return :: a -> AppM a
-  return = error "return for AppM not implemented"
+  return a = AppM $ const . pure . pure $ a
 
   (>>=) :: AppM a -> (a -> AppM b) -> AppM b
-  (>>=)  = error "bind for AppM not implemented"
+  (>>=) ma h = AppM $ \env -> runAppM ma env >>=
+    either (pure . Left) (\r -> runAppM (h r) env)
+
+
+-- newtype AppM a = AppM (Env -> IO (Either Error a))
 
 instance MonadIO AppM where
   liftIO :: IO a -> AppM a
-  liftIO = error "liftIO for AppM not implemented"
+  liftIO a = AppM $ const (a >>= pure . pure)
+
+-- AppM (Env -> IO (Either Error Env))
 
 instance MonadReader Env AppM where
   ask :: AppM Env
-  ask = error "ask for AppM not implemented"
+  ask = AppM (pure . Right)
 
   local :: (Env -> Env) -> AppM a -> AppM a
-  local = error "local for AppM not implemented"
+  local f ma = AppM (runAppM ma . f)
 
   reader :: (Env -> a) -> AppM a
-  reader = error "reader for AppM not implemented"
+  reader f = AppM $ \env -> pure . Right $ f env
 
 instance MonadError Error AppM where
   throwError :: Error -> AppM a
-  throwError = error "throwError for AppM not implemented"
+  throwError e = AppM $ const (pure . Left $ e)
+
+-- newtype AppM a = AppM (Env -> IO (Either Error a))
 
   catchError :: AppM a -> (Error -> AppM a) -> AppM a
-  catchError = error "catchError for AppM not implemented"
+  catchError ma f = AppM $ \env -> runAppM ma env >>=
+    either (\e -> runAppM (f e) env) (pure . Right)
 
 -- This is a helper function that will `lift` an Either value into our new AppM
 -- by applying `throwError` to the Left value, and using `pure` to lift the
@@ -110,8 +119,5 @@ instance MonadError Error AppM where
 -- throwError :: MonadError e m => e -> m a
 -- pure :: Applicative m => a -> m a
 --
-liftEither
-  :: Either Error a
-  -> AppM a
-liftEither =
-  error "throwLeft not implemented"
+liftEither :: Either Error a -> AppM a
+liftEither = either throwError pure

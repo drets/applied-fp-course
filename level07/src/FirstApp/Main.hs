@@ -5,8 +5,9 @@ module FirstApp.Main
   , app
   ) where
 
+import           Control.Applicative                (liftA2)
 import           Control.Monad.Except               (ExceptT (ExceptT),
-                                                     runExceptT)
+                                                     runExceptT, join)
 import           Control.Monad.IO.Class             (liftIO)
 
 import           Network.Wai                        (Application, Request,
@@ -72,21 +73,18 @@ runApp = do
 -- the functions and work directly on the values, knowing that the error
 -- handling will work as expected. Then you `runExceptT` and produce the final
 -- Either value.
-prepareAppReqs
-  :: IO (Either StartUpError Env)
-prepareAppReqs =
-  error "Copy your completed 'prepareAppReqs' and refactor to match the new type signature"
+prepareAppReqs :: IO (Either StartUpError Env)
+prepareAppReqs = runExceptT $ do
+  cfg <- initConf
+  db <- initDB cfg
+  pure (Env logToErr cfg db)
   where
     logToErr :: Text -> AppM ()
     logToErr = liftIO . hPutStrLn stderr
 
     toStartUpErr :: (a -> StartUpError) -> IO (Either a c) -> ExceptT StartUpError IO c
-    toStartUpErr = error "toStartUpErr not reimplemented"
+    toStartUpErr f i = ExceptT $ (fmap . first) f i
 
-    -- Take our possibly failing configuration/db functions with their unique
-    -- error types and turn them into a consistently typed ExceptT. We can then
-    -- use them in a `do` block as if the Either isn't there. Extracting the
-    -- final result before returning.
     initConf :: ExceptT StartUpError IO Conf
     initConf = toStartUpErr ConfErr $ Conf.parseOptions "appconfig.json"
 
